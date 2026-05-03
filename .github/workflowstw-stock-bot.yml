@@ -1,0 +1,57 @@
+name: TW Stock AI Bot
+
+on:
+  workflow_dispatch:
+    inputs:
+      mode:
+        description: "Run mode: morning, intraday, evening"
+        required: true
+        default: "morning"
+  schedule:
+    - cron: "30 0 * * 1-5"
+    - cron: "5,20,35,50 1-4 * * 1-5"
+    - cron: "5,20 5 * * 1-5"
+    - cron: "30 9 * * 1-5"
+
+permissions:
+  contents: write
+
+jobs:
+  run-bot:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      - name: Decide run mode
+        id: mode
+        shell: bash
+        run: |
+          HOUR=$(date -u +%H)
+          if [ "$HOUR" = "00" ]; then echo "mode=morning" >> "$GITHUB_OUTPUT"
+          elif [ "$HOUR" = "09" ]; then echo "mode=evening" >> "$GITHUB_OUTPUT"
+          else echo "mode=intraday" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Run stock bot
+        env:
+          TG_BOT_TOKEN: ${{ secrets.TG_BOT_TOKEN }}
+          TG_CHAT_ID: ${{ secrets.TG_CHAT_ID }}
+          RUN_MODE: ${{ steps.mode.outputs.mode }}
+        run: python src/main.py
+
+      - name: Commit updated data
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add data || true
+          git commit -m "Update stock data" || true
+          git push || true
